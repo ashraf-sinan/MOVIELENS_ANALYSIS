@@ -78,7 +78,7 @@ def searchUserByIdMovies(id):
     return filtered
 
 # Count the number of movies each userId has watched
-def countWatchedMovies():
+def count_watched_movies():
     # Group by userId and movieId
     tagged_count = tags.groupBy("userId", "movieId").agg(func.countDistinct("tag").alias("taggedCount"))
     rated_count = ratings.groupBy("userId", "movieId").agg(func.countDistinct("rating").alias("ratedCount"))
@@ -114,11 +114,31 @@ def count_watched_genres():
     # Group by userId, counting distinct number of genres watched
     genres_watched = movies_watched_explode_genres.groupBy("userId").agg(func.countDistinct("Genre").alias("genresWatched"))
     genres_watched.show()
-    
+
     return genres_watched
 
-def get_watch_count(id):
+def count_watched_movies_user(id):
     movies_watched_count.where("userId = " + id).show()
+
+def count_watched_genres_user(id):
+    genres_watched_count.where("userId = " + id).show()
+
+def get_titles_movies_watched_user(id):
+    # Group by userId and movieId
+    tagged_count = tags.groupBy("userId", "movieId").agg(func.countDistinct("tag").alias("taggedCount"))
+    rated_count = ratings.groupBy("userId", "movieId").agg(func.countDistinct("rating").alias("ratedCount"))
+
+    # Combine rows from ratings and tags tables
+    movies_watched = tagged_count.join(rated_count, on=['userId', "movieId"], how ='fullouter')
+
+    # Combine with movies table, which contains movie title
+    movies_watched_titles = movies_watched.join(movies, on=["movieId"], how='leftouter')
+    
+    # View titles of movies watched, filtered by provided userId 
+    movies_watched_titles = movies_watched_titles.select(movies_watched_titles.title)\
+                            .where("userId = " + str(id))\
+                            .show(200)
+
 
 def searchUsersById(ids):
     
@@ -178,7 +198,7 @@ def recommendMovie(userId):
 # movies_watched_count = countWatchedMovies()
 # movies_watched_count.persist()
 # get_watch_count("2")
-count_watched_genres()
+#count_watched_genres()
 
 
 # searchMovieById(2)
@@ -186,3 +206,5 @@ count_watched_genres()
 # searchMovieByTitle("Jum")
 # searchUserById(5)
 # searchUserById(22)
+
+get_titles_movies_watched_user(2)
