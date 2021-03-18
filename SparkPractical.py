@@ -104,15 +104,15 @@ def count_watched_genres():
     movies_watched_genres = movies_watched.join(movies, on=["movieId"], how='leftouter')
     
     # Split genres into array column
-    movies_watches_split_genres = movies_watched_genres.select(movies_watched_genres.userId, split(col("genres"), "[|]").alias("genresArray"))
-    movies_watches_split_genres.show()
+    movies_genres_split = movies_watched_genres.select(movies_watched_genres.userId, split(col("genres"), "[|]").alias("genresArray"))
     
     # Explode genres array into rows
-    movies_watched_explode_genres = movies_watches_split_genres.select(movies_watches_split_genres.userId, explode("genresArray").alias("Genre"))
-    movies_watched_explode_genres.show()
-
+    movies_watched_explode_genres = movies_genres_split.select(movies_genres_split.userId, explode("genresArray").alias("Genre"))
+    
     # Group by userId, counting distinct number of genres watched
-    genres_watched = movies_watched_explode_genres.groupBy("userId").agg(func.countDistinct("Genre").alias("genresWatched"))
+    genres_watched = movies_watched_explode_genres.groupBy("userId")\
+                                                  .agg(func.countDistinct("Genre").alias("genresWatched"))\
+                                                  .sort(func.desc("genresWatched"))
     genres_watched.show()
 
     return genres_watched
@@ -138,6 +138,88 @@ def get_titles_movies_watched_user(id):
     movies_watched_titles = movies_watched_titles.select(movies_watched_titles.title)\
                             .where("userId = " + str(id))\
                             .show(200)
+
+def get_number_users_watched_movie(movieId):
+    # Group by userId and movieId
+    tagged_count = tags.groupBy("userId", "movieId").agg(func.countDistinct("tag").alias("taggedCount"))
+    rated_count = ratings.groupBy("userId", "movieId").agg(func.countDistinct("rating").alias("ratedCount"))
+
+    # Combine rows from ratings and tags tables
+    movies_watched = tagged_count.join(rated_count, on=['userId', "movieId"], how ='fullouter')
+
+    # Combine with movies table, which contains movie title
+    movies_watched_titles = movies_watched.join(movies, on=["movieId"], how='leftouter')
+
+    # Get count of unique users by movieId
+    unique_users_per_movie = movies_watched_titles.groupBy("movieId", "title")\
+                            .agg(func.countDistinct("userId").alias("watchCount"))\
+                            .sort(func.desc("watchCount"))
+    unique_users_per_movie.show(50)
+
+    # View titles of movies watched, filtered by provided userId 
+    movies_watched_titles = unique_users_per_movie\
+                            .filter(col("movieId") == str(movieId))\
+                            .select(unique_users_per_movie.title, unique_users_per_movie.watchCount)\
+                            .show()
+
+def search_movies_by_genre(genre):
+    # Split genres into array column
+    movies_genres_split = movies.select(movies.movieId,movies.title, split(col("genres"), "[|]").alias("genresArray"))
+    movies_genres_split.show()
+    
+    # Explode genres array into rows
+    movies_watched_explode_genres = movies_genres_split.select(movies_genres_split.movieId, movies_genres_split.title, explode("genresArray").alias("genre"))
+    movies_watched_explode_genres.show()
+
+    # Select movies of particular genre 
+    movies_watched_explode_genres.filter(col("genre") == genre)\
+                                 .show()
+
+def genres_ratings_avg_per_user():
+    # combine tags with movies, linking ratings with genres
+    movies_ratings = ratings.join(movies, on=["movieId"], how="leftouter")
+    
+    # Explode genres into rows
+    movies_ratings_exploded_genre = movies_ratings\
+                                    .select(col("userId"), col("title"), col("rating"), split(col("genres"), "[|]").alias("genresArray"))\
+                                    .select(col("userId"), col("title"), col("rating"), explode("genresArray").alias("genre"))
+    
+    # Group by userId, genre -> avg rating
+    genres_rating_avg = movies_ratings_exploded_genre.groupBy("userId", "genre")\
+                            .agg(func.mean("rating").alias("AvgRating"))\
+                            .sort(func.desc("userId"))
+    genres_rating_avg.show(30)
+    return genres_rating_avg
+
+
+def genres_ratings_count_per_user():
+    # combine tags with movies, linking ratings with genres
+    movies_ratings = ratings.join(movies, on=["movieId"], how="leftouter")
+    
+    # Explode genres into rows
+    movies_ratings_exploded_genre = movies_ratings\
+                                .select(col("userId"), col("title"), col("rating"), split(col("genres"), "[|]").alias("genresArray"))\
+                                .select(col("userId"), col("title"), col("rating"), explode("genresArray").alias("genre"))
+    
+    # Group by userId, genre -> avg rating
+    genres_rating_count = movies_ratings_exploded_genre.groupBy("userId", "genre")\
+                            .agg(func.count("rating").alias("ratingsCount"))\
+                            .sort(func.desc("userId"))
+    genres_rating_count.show(30)
+    return genres_rating_count
+
+# Combine users' avg rating per genre with the count of how many ratings they've made per genre
+def genres_rated_count_avg_per_user():
+    genres_rated_count_avg_per_user = genres_ratings_count_per_user().join(genres_ratings_avg_per_user(), on=["userId","genre"], how="leftouter")\
+                                     .filter(col("userId") == 1)\
+                                     .sort(col("AvgRating").desc())
+    genres_rated_count_avg_per_user.show()
+
+    # Only consider genres which have a representative number of ratings
+    genres_rated_count_avg_per_user.filter(col("ratingsCount") > 10)\
+                                   .show()
+
+
 
 
 def searchUsersById(ids):
@@ -198,7 +280,7 @@ def recommendMovie(userId):
 # movies_watched_count = countWatchedMovies()
 # movies_watched_count.persist()
 # get_watch_count("2")
-#count_watched_genres()
+count_watched_genres()
 
 
 # searchMovieById(2)
@@ -207,4 +289,9 @@ def recommendMovie(userId):
 # searchUserById(5)
 # searchUserById(22)
 
-get_titles_movies_watched_user(2)
+#get_titles_movies_watched_user(2)
+#get_number_users_watched_movie(1)
+#search_movies_by_genre("Action")
+#genres_rating_count_per_user(2)
+#genres_watch_count_per_user(2)
+genres_rated_count_avg_per_user()
