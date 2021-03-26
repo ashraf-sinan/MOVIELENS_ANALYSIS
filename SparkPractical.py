@@ -280,7 +280,7 @@ def recommendMovie(userId):
 # movies_watched_count = countWatchedMovies()
 # movies_watched_count.persist()
 # get_watch_count("2")
-count_watched_genres()
+#count_watched_genres()
 
 
 # searchMovieById(2)
@@ -294,4 +294,5 @@ count_watched_genres()
 #search_movies_by_genre("Action")
 #genres_rating_count_per_user(2)
 #genres_watch_count_per_user(2)
-genres_rated_count_avg_per_user()
+#genres_rated_count_avg_per_user()
+
