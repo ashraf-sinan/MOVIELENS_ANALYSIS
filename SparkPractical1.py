@@ -5,6 +5,7 @@ from pyspark.sql.functions  import explode, split, avg, col, desc, asc, count, c
 from pyspark.ml.recommendation import ALS
 from pyspark.ml.evaluation import RegressionEvaluator
 import matplotlib.pyplot as plt
+import HelperFunctions as helperFuncs
 
 sc = pyspark.SparkContext.getOrCreate() 
 ## Read the data into memory
@@ -14,104 +15,49 @@ sqlContest = SQLContext(sc)
 SMALL_DATASET_PATH = 'ml-latest-small'
 DATASET_PATH = 'ml-latest'
 
-def load_data(dataPath):
-    #Load the movies and rating CSV files
-    movies = sqlContest.read.csv(dataPath + '/movies.csv', header=True)
-    ratings = sqlContest.read.csv(dataPath + '/ratings.csv', header=True)
-    tags = sqlContest.read.csv(dataPath + '/tags.csv', header=True)
-    
-    return ratings, movies, tags
-
-
-def clean_data(ratings, movies):
-    
-    ##Convert the timestamp to date 
-    # Drop NA values
-    # Convert data Type of columns intro integer and float
-    clean_ratings = ratings.na.drop()\
-    .withColumn('RatingDate', func.date_format(ratings.timestamp.
-                                                           cast(dataType= typ.LongType()).
-                                                           cast(dataType= typ.TimestampType()),
-                                                           "yyyy-MM-dd"))\
-    .withColumn("rating", ratings.rating.cast(dataType = typ.FloatType()))\
-    .withColumn("userId", ratings.userId.cast(dataType = typ.IntegerType()))\
-    .withColumn("movieId", ratings.movieId.cast(dataType = typ.IntegerType()))
-    
-    # Drop NA values
-    # Convert data Type of columns into integer
-    
-    clean_movies = movies.na.drop()\
-    .withColumn("movieId", movies.movieId.cast(dataType = typ.IntegerType()))\
-    .withColumn("production_year", substring(col("title"), -5, 4))
-    
-    #Split the genres column into rows based on the number of the separator | 
-
-    movies_geners =movies.withColumn("Genr",explode(split("genres","[|]")))
-
-    ## return the clean datafrmes (ratings, movies, and movies genres)
-    
-    return clean_ratings, clean_movies, movies_geners
-
-
-def search_user_by_id(user_id, ratings, movies):
-    
-    ##filter the users by the ID
-    filtered_users = ratings.where("userId =" + str(user_id))\
-    .join(movies, on=['movieId'], how ='inner')
-    
-    return filtered_users
-
-def search_users_by_ids(ids, ratings, movies):
-    
-    ## filtere users by a list of users ids using isin  
-    filtered_users = ratings.filter(col("userId").isin(ids))\
-    .join(movies, on=['movieId'], how ='inner')
-                                  
-    return filtered_users
-
-def search_movie_by_id(movieId, movies):
-    
-    ##filter the movies by the movie id    
-    filtered_movies = movies.where("movieId = " + str(movieId))
-    
-    return filtered_movies
-
-def search_movie_by_title(title, movies):
-    
-    ##filter the movies by title
-    filtered_movies = movies.where("title like \'%" + 
-                                  str(title) + "%\'")
-    
-    return filtered_movies
-
-def search_genre(genr, movies):
-    #search one genre using like operator to accept incomplete names
-    filtered_movies = movies.where("genres like \'%" + 
-                                  str(genr) + "%\'")
-    #filtered_movies.show()
-    return filtered_movies
-
-def search_genres(genrs, movies_geners, movies):
-    
-    ##filter all movies that are contained in the genres
-    genrs_movies = movies_geners.filter(col("Genr").isin(genrs))
-    ##join the filtered movies id with the movies dataframe
-    filtered_movies = genrs_movies.join(movies, on=['movieId'], how = 'inner')
+def select_visualisations(movies_genres_watched):
+    while True:
+        print("Select visualisation:")
+        print("1- All visualisations | 2-User's avg rating of each genre | 3- User's watch count of each genre")
+        print("4- How many users have genres as favourite | 5- How many users watched each genre")
+        print("6- Distribution of ratings for genre | 7- Distribution of ratings for movie")
+        print("8- Exit")
         
-    return filtered_movies
+        try:
+            choice = int(input('Enter your choice number from the list above:').strip())
+            
+            if choice == 1: # Show all visualisations
+                # TODO
+                pass
 
-def search_genres_separated(genrs, movies_geners, movies):
-    
-    ##Search each Genr, show how many movies it contains and show the first five movies
-    for genr in genrs:
-        genr_movies = search_genre(genr, movies)
-        print("Genre (" + genr + ") contains " + str(genr_movies.count()))
-        genr_movies.show(5)
-    
-    return
+            elif choice == 2:   # Compare user's avg ratings of genres
+                userId = helperFuncs.enterId("user ")
+                visualise_user_ratings_genres(userId, movies_genres_watched)
+
+            elif choice == 3:   # Compare user's watch count of genres
+                userId = helperFuncs.enterId("user ")
+                visualise_times_user_watched_genres(userId, movies_genres_watched)
 
 
+            elif choice == 4:   # Compare which genres most users' favourites
+                visualise_favourite_genres(movies_genres_watched)
 
+            elif choice == 5:   # compare how many users have watched each genre
+                visualise_times_watched_genres_all_users(movies_genres_watched)
+            
+            elif choice == 6:   # Distribution of ratings for selected genre
+                genre = helperFuncs.input("Please enter the genre name:").strip()
+                visualise_distribution_ratings_genre_avg_user(movies_genres_watched, genre)
+            
+            elif choice == 7:   # Distribution of ratings for selected movie
+                movieTitle = input("Please enter the movie title:").strip()
+                visualise_distribution_ratings_movie_avg_user(movies_genres_watched, movieTitle)
+
+            elif choice == 8:
+                break
+            
+        except ValueError:
+            print("You should enter only a number between 1 and 8!")
 
 def count_watched_movies(movies_genres_watched, userId):
     """Search user by id, show the number of movies that he/she has watched"""
@@ -172,41 +118,6 @@ def summarize_genres(movies_genres, ratings):
     
     return summary
 
-def search_movies_by_year(year, movies):
-    
-    ##filter movies by year
-    filtered_movies = movies.where("title like \'%(" + 
-                                   str(year) + ")\'")
-    return filtered_movies
-
-def list_top_rated(ratings, movies):
-    
-    ## group the movies by movie id and aggregate their rating
-    ## then sort them by rating from heighst to lowest
-    top_rated = ratings\
-    .groupBy("movieId")\
-    .agg(avg(col("rating")))\
-    .withColumnRenamed("avg(rating)", "Average_Rating")\
-    .join(movies, on=['movieId'], how='inner')\
-    .sort(desc("Average_Rating"))
-    
-    
-    return top_rated
-
-
-def list_top_watched(ratings, movies):
-    
-    ## group the movies by movie id and aggregate their watchings
-    ## then sort them by watchings from heighst to lowest
-    
-    most_popular = ratings\
-    .groupBy("movieId")\
-    .agg(func.count("movieId"))\
-    .withColumnRenamed("count(movieId)", "Number_OF_Watchings")\
-    .join(movies, on=['movieId'], how='inner')\
-    .sort(func.desc("Number_OF_Watchings"))
-    
-    return most_popular
 
 
 ## Intermediate Requirements:
@@ -261,22 +172,6 @@ def search_favourite_genre(userId, movies_genres_watched):
                     .sort(desc(col("watchCount"))).limit(1)\
                     .select(col("userId"), col("genre").alias("favouriteGenre"))
     
-def compareTastes(user1_Id, user2_Id, movies_genres, ratings, movies):
-    u1 = find_users_genres(user1_Id, movies_genres, ratings, movies)
-    u2 = find_users_genres(user2_Id, movies_genres, ratings, movies)
-    u1 = u1.withColumnRenamed("wachings","User_" + str(user1_Id) +"_Watching_Times")\
-    .withColumnRenamed("Average_Rating","User_" + str(user1_Id) +"_Rating")
-    u2 = u2.withColumnRenamed("wachings","User_" + str(user2_Id) +"_Watching_Times")\
-    .withColumnRenamed("Average_Rating","User_" + str(user2_Id) +"_Rating")    
-    summary = u1.join(u2, on=['Genr'], how='inner')
-    
-    u1.select('Genr').subtract(u2.select('Genr')).join(u1, on=['Genr'], how='inner').show()
-    u2.select('Genr').subtract(u1.select('Genr')).join(u2, on=['Genr'], how='inner').show()
-
-    print("Comparing the Tastes of user:" +
-         str(user1_Id) + " , and user:" + str(user2_Id) + " :" )
-    
-    return summary
 
 ## Advanced Requirements:
 # Visualisations
@@ -372,30 +267,3 @@ def visualise_distribution_ratings_movie_avg_user(movies_genres_watched, title):
     ax.hist(avg_user_ratings_movie_list)
     ax.set_title("Distribution of users' avg rating of the movie: " + title)
     plt.show()
-
-def recommend_movies():
-    
-    ##Define ALS collaborative filtering model 
-    ## Max iteration 10 with learning rate 0.2, specifing the 
-    als_model = ALS(maxIter=10, regParam=0.2, userCol="user_id",
-         itemCol='movieId', ratingCol= "rating", coldStartStrategy="drop")
-    
-    ##Split the data into training and testing data
-    training_set, test_set = ratings.randomSplit([0.2,0.02])
-    
-    ##Train the model on the data
-    als_trained_model = als_model.fit(training_set)
-    
-    ##Predict the test data set
-    prediction = als_trained_model.transform(test)
-   
-    ##Evaluate the accuracy 
-    evaluator = RegressionEvaluator(metricName="mse", 
-                               labelCol = "rating", 
-                               predictionCol="prediction")
-    mse = evaluator.evaluate(prediction)
-    print(alsModel.recommendForUserSubset([1,2,3]))
-    print(mse)
-    
-    return 0
-
